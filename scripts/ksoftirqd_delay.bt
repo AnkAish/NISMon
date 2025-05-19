@@ -1,0 +1,47 @@
+#!/usr/bin/env bpftrace
+#include <linux/sched.h>
+
+BEGIN {
+  printf("Monitoring ksoftirqd delays...\n");
+}
+
+kprobe:wake_up_process {
+  $task = (struct task_struct *)arg0;
+  if (strncmp($task->comm, "ksoftirqd", 9) == 0) {
+    $cpu = ($task->cpu >= 0 ? $task->cpu : 0);
+    @wakeup_time[$cpu] = nsecs;
+  }
+}
+
+kretprobe:pick_next_task_fair {
+  $next = (struct task_struct *)retval;
+  if (strncmp($next->comm, "ksoftirqd", 9) == 0 && @wakeup_time[$next->cpu]) {
+    $cpu      = ($next->cpu >= 0 ? $next->cpu : 0);
+    $delta_us = (nsecs - @wakeup_time[$cpu]) / 1000;
+    delete(@wakeup_time[$cpu]);
+
+    @max_delay_us[$cpu] = max($delta_us);      // correct usage: one argument :contentReference[oaicite:0]{index=0}
+    @avg_delay_us[$cpu] = avg($delta_us);      // correct usage: one argument :contentReference[oaicite:1]{index=1}
+  }
+}
+
+interval:s:1 {
+  time("=== %Y-%m-%d %H:%M:%S ===\n");
+
+  // Emit per-CPU averages and maxima:
+  printf("CPU,avg_us,max_us\n");
+  print(@avg_delay_us);
+  print(@max_delay_us);
+
+  // Clear for next interval
+  clear(@avg_delay_us);
+  clear(@max_delay_us);
+
+  exit();
+}
+
+END {
+  clear(@wakeup_time);
+  clear(@avg_delay_us);
+  clear(@max_delay_us);
+}
