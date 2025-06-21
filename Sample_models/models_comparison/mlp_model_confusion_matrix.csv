@@ -1,0 +1,5 @@
+,pred_cpu_interference,pred_incast,pred_memory_contention,pred_normal
+true_cpu_interference,158,202,4,764
+true_incast,26,916,1,1374
+true_memory_contention,34,91,3,1011
+true_normal,97,480,5,5418
