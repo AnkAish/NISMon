@@ -1,6 +1,6 @@
 # Metrics Collection Scripts
 
-This folder contains shell scripts for collecting system metrics under various fault injection scenarios while running background traffic. The collected metrics include PCIe read counters, memory operations, network drops, CPU utilization, and kernel softirq statistics.
+This folder contains shell scripts for collecting system metrics under various fault injection scenarios while running background `iperf` traffic. The collected metrics include PCIe counters, memory operations, network drops, CPU utilization, and kernel softirq statistics.
 
 ---
 
@@ -11,50 +11,52 @@ metrics_collector/
 ├── common.sh
 ├── metrics_collection_with_CPU_interference.sh
 ├── metrics_collection_with_incast.sh
-└── metrics_collection_with_memory_contention.sh
+├── metrics_collection_with_memory_contention.sh
+└── metrics_collection_with_random_faults.sh
 ```
 
 * **common.sh**
 
-  * Orchestrates bandwidth sweep tests using `iperf` and invokes the appropriate metrics collection script.
+  * Orchestrates `iperf` bandwidth sweep tests and invokes metrics collection scripts.
 * **metrics\_collection\_with\_CPU\_interference.sh**
 
-  * Collects system metrics while injecting CPU interference.
+  * Samples metrics under CPU interference faults.
 * **metrics\_collection\_with\_incast.sh**
 
-  * Collects system metrics during an incast traffic scenario.
+  * Samples metrics during incast traffic scenarios.
 * **metrics\_collection\_with\_memory\_contention.sh**
 
-  * Collects system metrics under memory contention faults.
+  * Samples metrics under memory contention faults.
+* **metrics\_collection\_with\_random\_faults.sh**
+
+  * Injects random faults (incast, memory contention, CPU interference) at random intervals while collecting metrics.
 
 ---
 
 ## 📝 Overview
 
-Each `metrics_collection_*.sh` script samples the following metrics on the DUT for a fixed duration:
+Each `metrics_collection_*.sh` script connects to the DUT via SSH, samples the following metrics at regular intervals, and writes them to a CSV file named according to the scenario and bandwidth:
 
-* `PCIRdCur`     : PCIe read current count
-* `ItoM`         : In-to-memory transactions
-* `ItoMCacheNear`: Near cache memory transactions
-* `WiL`          : Write-in-latency events
-* `MemRead`      : Memory read operations
-* `MemWrite`     : Memory write operations
-* `MemTotal`     : Total memory usage
-* `drop_pct`(%)  : Packet drop percentage on the interface
-* `CPU_busy`(%)  : CPU busy percentage
-* `ksoft_avg`    : Average kernel softirq rate
-* `ksoft_max`    : Maximum kernel softirq rate
-
-The CSV output is saved with a filename indicating the fault scenario and bandwidth.
+* `PCIRdCur`        : PCIe read current count
+* `ItoM`            : In-to-memory transactions
+* `ItoMCacheNear`   : Near-cache memory transactions
+* `WiL`             : Write-in-latency events
+* `MemRead`         : Memory read operations
+* `MemWrite`        : Memory write operations
+* `MemTotal`        : Total memory usage
+* `drop_pct` (%)    : Packet drop percentage on the interface
+* `CPU_busy` (%)    : CPU busy percentage
+* `ksoft_avg`       : Average kernel softirq rate
+* `ksoft_max`       : Maximum kernel softirq rate
 
 ---
 
 ## ⚙️ Prerequisites
 
 * **bash** shell (GNU Bash 4+ recommended)
-* **iperf** (version 2) installed on both client and DUT
-* SSH passwordless access configured from the test host to DUT
-* The DUT’s NIC interface and IP address correctly set in `common.sh`
+* **iperf** version 2 on both host and DUT
+* SSH passwordless access from the host to the DUT
+* `common.sh` configured with the DUT’s hostname/IP, NIC interface, and sampling parameters
 
 ---
 
@@ -62,10 +64,12 @@ The CSV output is saved with a filename indicating the fault scenario and bandwi
 
 1. **Configure `common.sh`**
 
-   * Update `SSH_DUT` to the DUT’s hostname or IP for SSH.
-   * Set `SERVER_IP` to the DUT’s NIC IP.
-   * Adjust `IFACE_STATS` to the network interface to monitor drops and stats.
-   * Modify `BWS` array for desired `iperf` bandwidth targets.
+   * `SSH_DUT`: DUT’s SSH hostname or IP.
+   * `SERVER_IP`: DUT’s NIC IP.
+   * `IFACE_STATS`: Interface to monitor (drops and stats).
+   * `BWS`: Array of `iperf` bandwidth targets.
+   * `DUR`: Duration (seconds) for background traffic (default `2500`).
+   * **Metrics duration**: adjust the hard-coded `300` (seconds) for metrics collection in the invocation line.
 
 2. **Make scripts executable**
 
@@ -73,44 +77,58 @@ The CSV output is saved with a filename indicating the fault scenario and bandwi
    chmod +x *.sh
    ```
 
-3. **Run the sweep**
+3. **Run the standard sweep**
 
    ```bash
    ./common.sh
    ```
 
-   * Runs `iperf` client for 2500 seconds
-   * For each bandwidth in `BWS`, it launches the corresponding metrics collection script for 300 seconds
-   * Outputs CSV files in the current directory, named:
-     `metrics_<scenario>_<bandwidth>.csv`
+   * Launches `iperf` for `DUR` seconds across parallel streams.
+   * For each bandwidth in `BWS`, runs the selected metrics script for the configured metrics duration.
+   * Outputs CSV files named: `metrics_<scenario>_<bandwidth>.csv`.
+
+4. **Run with random faults**
+
+   * Modify in `common.sh`:
+
+     ```bash
+     DUR=5000               # background traffic duration (s)
+     METRIC_DUR=600         # metrics collection duration (s)
+     ```
+   * Replace the metrics invocation line to use `metrics_collection_with_random_faults.sh`:
+
+     ```bash
+     ./metrics_collection_with_random_faults.sh "$SSH_DUT" "$BW" $METRIC_DUR "$IFACE_STATS" &
+     ```
+   * Execute:
+
+     ```bash
+     ./common.sh
+     ```
+   * This will inject faults at random points during the 5000s traffic and collect metrics for 600s per bandwidth.
 
 ---
 
-## 📂 Example Output
+## 📂 Example Outputs
 
-After completion, you will find CSV files such as:
+After running, you will see files like:
 
 ```plain
 metrics_CPU_interference_5G.csv
 metrics_incast_7.5G.csv
 metrics_memory_contention_10G.csv
+metrics_random_faults_7.5G.csv
 ```
 
-Each CSV has a header row listing the metrics and one row per sampling interval.
+Each CSV contains a header row with metric names and one row per sampling interval.
 
 ---
 
 ## 🛠 Customization
 
-* **Duration**
-
-  * Modify `DUR` in `common.sh` to change the `iperf` test length.
-  * Change the hard-coded `300` in the `common.sh` invocation to adjust metrics collection time.
-
-* **Parallel Streams**
-  Adjust `IPERF_PARALLEL` for more or fewer concurrent TCP streams.
-
-* **Additional Metrics**
-  Extend each `metrics_collection_*.sh` script to capture more kernel or hardware counters as needed.
+* **Background traffic duration**: set `DUR` in `common.sh`.
+* **Metrics collection duration**: set `METRIC_DUR` in `common.sh`.
+* **Fault types**: edit `metrics_collection_with_random_faults.sh` to adjust fault intervals or types.
+* **Additional metrics**: append new counters in any `metrics_collection_*.sh` as needed.
 
 ---
