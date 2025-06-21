@@ -1,6 +1,6 @@
-# Metrics Collection Scripts
+# Metrics Collection & Preprocessing Scripts
 
-This folder contains shell scripts for collecting system metrics under various fault injection scenarios while running background `iperf` traffic. The collected metrics include PCIe counters, memory operations, network drops, CPU utilization, and kernel softirq statistics.
+This folder contains shell scripts to collect system metrics under various fault injection scenarios during background `iperf` traffic, plus a Python preprocessing script to merge and label the resulting CSVs.
 
 ---
 
@@ -12,7 +12,9 @@ metrics_collector/
 ├── metrics_collection_with_CPU_interference.sh
 ├── metrics_collection_with_incast.sh
 ├── metrics_collection_with_memory_contention.sh
-└── metrics_collection_with_random_faults.sh
+├── metrics_collection_with_random_faults.sh
+├── merge_and_label_CSV_files.py
+└── merged_labeled_periodic_fault_data.csv
 ```
 
 * **common.sh**
@@ -30,24 +32,39 @@ metrics_collector/
 * **metrics\_collection\_with\_random\_faults.sh**
 
   * Injects random faults (incast, memory contention, CPU interference) at random intervals while collecting metrics.
+* **merge\_and\_label\_CSV\_files.py**
+
+  * Preprocesses, concatenates, and labels all generated CSVs into a single DataFrame.
+* **merged\_labeled\_periodic\_fault\_data.csv**
+
+  * Example output from running the Python preprocessing script.
 
 ---
 
 ## 📝 Overview
 
-Each `metrics_collection_*.sh` script connects to the DUT via SSH, samples the following metrics at regular intervals, and writes them to a CSV file named according to the scenario and bandwidth:
+1. **Data Collection**: Shell scripts (`metrics_collection_*.sh`) connect to the DUT via SSH and sample these metrics at regular intervals:
 
-* `PCIRdCur`        : PCIe read current count
-* `ItoM`            : In-to-memory transactions
-* `ItoMCacheNear`   : Near-cache memory transactions
-* `WiL`             : Write-in-latency events
-* `MemRead`         : Memory read operations
-* `MemWrite`        : Memory write operations
-* `MemTotal`        : Total memory usage
-* `drop_pct` (%)    : Packet drop percentage on the interface
-* `CPU_busy` (%)    : CPU busy percentage
-* `ksoft_avg`       : Average kernel softirq rate
-* `ksoft_max`       : Maximum kernel softirq rate
+   * `PCIRdCur`      : PCIe read current count
+   * `ItoM`          : In-to-memory transactions
+   * `ItoMCacheNear` : Near-cache memory transactions
+   * `WiL`           : Write-in-latency events
+   * `MemRead`       : Memory read operations
+   * `MemWrite`      : Memory write operations
+   * `MemTotal`      : Total memory usage
+   * `drop_pct` (%)  : Packet drop percentage on the interface
+   * `CPU_busy` (%)  : CPU busy percentage
+   * `ksoft_avg`     : Average kernel softirq rate
+   * `ksoft_max`     : Maximum kernel softirq rate
+
+   CSV files are named `metrics_<scenario>_<bandwidth>.csv`.
+
+2. **Data Preprocessing**: The Python script `merge_and_label_CSV_files.py`:
+
+   * Reads all `metrics_*.csv` files in the directory.
+   * Concatenates them into a single DataFrame.
+   * Adds a `scenario` and `bandwidth` label extracted from filenames.
+   * Outputs `merged_labeled_periodic_fault_data.csv` for downstream analysis.
 
 ---
 
@@ -55,80 +72,91 @@ Each `metrics_collection_*.sh` script connects to the DUT via SSH, samples the f
 
 * **bash** shell (GNU Bash 4+ recommended)
 * **iperf** version 2 on both host and DUT
-* SSH passwordless access from the host to the DUT
-* `common.sh` configured with the DUT’s hostname/IP, NIC interface, and sampling parameters
+* SSH passwordless access from host to DUT
+* **Python 3.8+** with the following packages:
+
+  ```bash
+  pip install pandas glob2
+  ```
 
 ---
 
 ## 🚀 Usage
 
+### 1. Collect Metrics
+
 1. **Configure `common.sh`**
 
-   * `SSH_DUT`: DUT’s SSH hostname or IP.
-   * `SERVER_IP`: DUT’s NIC IP.
-   * `IFACE_STATS`: Interface to monitor (drops and stats).
-   * `BWS`: Array of `iperf` bandwidth targets.
-   * `DUR`: Duration (seconds) for background traffic (default `2500`).
-   * **Metrics duration**: adjust the hard-coded `300` (seconds) for metrics collection in the invocation line.
-
+   ```bash
+   SSH_DUT=netx4              # DUT hostname or IP
+   SERVER_IP=30.0.0.2         # DUT NIC IP
+   IFACE_STATS=ens802np1np1   # Interface to monitor
+   BWS=(2.5G 3.75G 5G 6.25G 7.5G 8.75G 10G)
+   DUR=2500                   # background traffic duration (s)
+   METRIC_DUR=300             # metrics collection duration (s)
+   ```
 2. **Make scripts executable**
 
    ```bash
    chmod +x *.sh
    ```
-
-3. **Run the standard sweep**
+3. **Run standard sweep**
 
    ```bash
    ./common.sh
    ```
 
-   * Launches `iperf` for `DUR` seconds across parallel streams.
-   * For each bandwidth in `BWS`, runs the selected metrics script for the configured metrics duration.
-   * Outputs CSV files named: `metrics_<scenario>_<bandwidth>.csv`.
+### 2. Run with Random Faults
 
-4. **Run with random faults**
+Modify in `common.sh`:
 
-   * Modify in `common.sh`:
+```bash
+DUR=5000
+METRIC_DUR=600
+```
 
-     ```bash
-     DUR=5000               # background traffic duration (s)
-     METRIC_DUR=600         # metrics collection duration (s)
-     ```
-   * Replace the metrics invocation line to use `metrics_collection_with_random_faults.sh`:
+Replace invocation line:
 
-     ```bash
-     ./metrics_collection_with_random_faults.sh "$SSH_DUT" "$BW" $METRIC_DUR "$IFACE_STATS" &
-     ```
-   * Execute:
+```bash
+./metrics_collection_with_random_faults.sh "$SSH_DUT" "$BW" $METRIC_DUR "$IFACE_STATS" &
+```
 
-     ```bash
-     ./common.sh
-     ```
-   * This will inject faults at random points during the 5000s traffic and collect metrics for 600s per bandwidth.
+Then:
+
+```bash
+./common.sh
+```
+
+### 3. Preprocess & Merge
+
+```bash
+python merge_and_label_CSV_files.py
+```
+
+* Scans for `metrics_*.csv` in the current folder.
+* Generates `merged_labeled_periodic_fault_data.csv`.
 
 ---
 
 ## 📂 Example Outputs
-
-After running, you will see files like:
 
 ```plain
 metrics_CPU_interference_5G.csv
 metrics_incast_7.5G.csv
 metrics_memory_contention_10G.csv
 metrics_random_faults_7.5G.csv
+merged_labeled_periodic_fault_data.csv
 ```
 
-Each CSV contains a header row with metric names and one row per sampling interval.
+* **`merged_labeled_periodic_fault_data.csv`** contains all sampled metrics with added `scenario` and `bandwidth` columns for easy filtering.
 
 ---
 
 ## 🛠 Customization
 
-* **Background traffic duration**: set `DUR` in `common.sh`.
-* **Metrics collection duration**: set `METRIC_DUR` in `common.sh`.
-* **Fault types**: edit `metrics_collection_with_random_faults.sh` to adjust fault intervals or types.
-* **Additional metrics**: append new counters in any `metrics_collection_*.sh` as needed.
+* Change `DUR` and `METRIC_DUR` in `common.sh` for traffic and collection durations.
+* Add or remove bandwidth targets in the `BWS` array.
+* Extend `metrics_collection_*.sh` scripts to capture additional counters.
+* Modify `merge_and_label_CSV_files.py` to adjust labeling logic or include new file patterns.
 
 ---
