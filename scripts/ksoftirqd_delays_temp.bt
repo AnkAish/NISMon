@@ -1,0 +1,47 @@
+#!/usr/bin/bpftrace
+#include <linux/sched.h>
+
+BEGIN {
+  printf("Monitoring ksoftirqd delays...\n");
+}
+
+kprobe:wake_up_process {
+  $task = (struct task_struct *)arg0;
+  $comm = $task->comm;
+  if (strncmp($comm, "ksoftirqd", 9) == 0) {
+    $cpu = $task->cpu;
+    @wakeup_time[$comm, $cpu] = nsecs;
+  }
+}
+
+kretprobe:pick_next_task_fair {
+  $next = (struct task_struct *)retval;
+  $comm = $next->comm;
+  $cpu = $next->cpu;
+  if (strncmp($comm, "ksoftirqd", 9) == 0 && @wakeup_time[$comm, $cpu] != 0) {
+    $delay = nsecs - @wakeup_time[$comm, $cpu];
+    $delay_us = $delay / 1000;
+    //@delays_us[$comm, $cpu] = hist($delay_us);
+    @max_delay_us[$comm, $cpu] = max($delay_us);
+    @avg_delay_us[$comm, $cpu] = avg($delay_us);
+    delete(@wakeup_time[$comm, $cpu]);
+  }
+}
+
+interval:s:1 {
+  time("=== %Y-%m-%d %H:%M:%S ===\n");
+  //print(@delays_us);
+  print(@max_delay_us);
+  print(@avg_delay_us);
+  //clear(@delays_us);
+  clear(@max_delay_us);
+  clear(@avg_delay_us);
+}
+
+END {
+  clear(@wakeup_time);
+  //clear(@delays_us);
+  clear(@max_delay_us);
+  clear(@avg_delay_us);
+}
+
