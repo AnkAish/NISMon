@@ -121,6 +121,6 @@ def concat_and_label(base_folder):
 if __name__ == '__main__':
     BASE_FOLDER = Path.cwd()
     merged_df = concat_and_label(BASE_FOLDER)
-    out_file = BASE_FOLDER / 'merged_labeled_Testdata_v3.csv'
+    out_file = BASE_FOLDER / 'dataset_testing.csv'
     merged_df.to_csv(out_file, index=False)
     print(f"Saved {len(merged_df)} rows to '{out_file.name}'")
