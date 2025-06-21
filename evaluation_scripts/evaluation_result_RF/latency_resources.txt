@@ -1,0 +1,6 @@
+Total inference time: 0.2265 s for 2941 samples
+Avg latency/sample:   0.077 ms
+Memory before:        206.7 MiB
+Memory after:         214.1 MiB
+Peak mem overhead:    7.5 MiB
+CPU% during inference (min/avg/max): 92.5/170.2/248.6
