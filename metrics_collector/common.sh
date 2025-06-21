@@ -4,8 +4,7 @@
 
 SSH_DUT=netx4
 DUR=2500                           # test duration (s)
-# BWS=(2.5G 3.75G 5G 6.25G 7.5G 8.75G 10G)     # iperf client target bandwidths
-BWS=(10G)     # iperf client target bandwidths
+BWS=(2.5G 3.75G 5G 6.25G 7.5G 8.75G 10G)     # iperf client target bandwidths
 IPERF_PARALLEL=4                  # number of TCP streams per test
 SERVER_IP="30.0.0.2"              # DUT’s NIC IP
 IFACE_STATS="ens802np1np1"        # interface to sample drops/stats
